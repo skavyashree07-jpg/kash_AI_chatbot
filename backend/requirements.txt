@@ -7,5 +7,5 @@ passlib[bcrypt]
 PyJWT
 bcrypt
 httpx
-PyPDF2
+pypdf
 requests
