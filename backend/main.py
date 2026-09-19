@@ -62,8 +62,12 @@ app.add_middleware(
     CORSMiddleware,
 
     allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS",
+            "https://kash-ai-chatbot.vercel.app,http://localhost:5173,http://127.0.0.1:5173"
+        ).split(",")
+        if origin.strip()
     ],
 
     allow_credentials=True,
@@ -85,9 +89,12 @@ create_database()
 # OLLAMA
 # =========================================================
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
+OLLAMA_URL = os.getenv(
+    "OLLAMA_URL",
+    "http://127.0.0.1:11434/api/chat"
+)
 
-OLLAMA_MODEL = "qwen2.5:7b"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
 
 # =========================================================

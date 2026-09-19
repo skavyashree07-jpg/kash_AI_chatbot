@@ -108,43 +108,32 @@ function App() {
       return;
     }
 
-    loadCurrentUser();
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await fetch(`${API}/auth/me`, {
+            headers: authHeaders()
+          });
 
-  }, [token]);
+          if (!response.ok) {
+            await logout(false);
+            return;
+          }
 
-
-  const loadCurrentUser = async () => {
-
-    try {
-
-      const response = await fetch(
-        `${API}/auth/me`,
-        {
-          headers: authHeaders()
+          const data = await response.json();
+          setUser(data.user);
+          await loadChatHistory();
+        } catch (error) {
+          console.error("Authentication error:", error);
         }
-      );
+      })();
+    }, 0);
 
-      if (!response.ok) {
+    return () => window.clearTimeout(timeoutId);
 
-        logout(false);
-
-        return;
-      }
-
-      const data = await response.json();
-
-      setUser(data.user);
-
-      loadChatHistory();
-
-    } catch (error) {
-
-      console.error(
-        "Authentication error:",
-        error
-      );
-    }
-  };
+    // Authentication should only reload when the token changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
 
   // =====================================================
@@ -323,9 +312,9 @@ function App() {
   // LOGOUT
   // =====================================================
 
-  const logout = async (
+  async function logout(
     askConfirmation = true
-  ) => {
+  ) {
 
     if (
       askConfirmation &&
@@ -371,7 +360,7 @@ function App() {
     setFileName("");
 
     setSettingsOpen(false);
-  };
+  }
 
 
   // =====================================================
@@ -409,20 +398,26 @@ function App() {
     );
 
     if (!voiceEnabled) {
-
       window.speechSynthesis?.cancel();
-
-      setSpeakingMessage(null);
     }
 
   }, [voiceEnabled]);
+
+  const updateVoiceEnabled = (enabled) => {
+    setVoiceEnabled(enabled);
+
+    if (!enabled) {
+      window.speechSynthesis?.cancel();
+      setSpeakingMessage(null);
+    }
+  };
 
 
   // =====================================================
   // LOAD CHAT HISTORY
   // =====================================================
 
-  const loadChatHistory = async () => {
+  async function loadChatHistory() {
 
     if (!token) return;
 
@@ -463,7 +458,7 @@ function App() {
         error
       );
     }
-  };
+  }
 
 
   // =====================================================
@@ -546,7 +541,9 @@ function App() {
 
         recognition.stop();
 
-      } catch {}
+      } catch (error) {
+        console.debug("Voice recognition was already stopped.", error);
+      }
     };
 
   }, []);
@@ -1437,7 +1434,7 @@ function App() {
         <div className="auth-card">
 
           <div className="auth-logo">
-            ✦
+            K
           </div>
 
           <h1>
@@ -1568,7 +1565,7 @@ function App() {
         <div className="logo">
 
           <div className="logo-icon">
-            ✦
+            K
           </div>
 
           <div>
@@ -1724,7 +1721,7 @@ function App() {
           <div className="header-title">
 
             <div className="header-logo">
-              ✦
+              K
             </div>
 
             <div>
@@ -1887,9 +1884,7 @@ function App() {
                       voiceEnabled
                     }
                     onChange={(e) =>
-                      setVoiceEnabled(
-                        e.target.checked
-                      )
+                      updateVoiceEnabled(e.target.checked)
                     }
                   />
 
@@ -2043,7 +2038,7 @@ function App() {
             <div className="welcome">
 
               <div className="welcome-logo">
-                ✦
+                K
               </div>
 
               <h1>
@@ -2109,7 +2104,7 @@ function App() {
 
                       {msg.role === "user"
                         ? getInitials()
-                        : "✦"}
+                        : "K"}
 
                     </div>
 
@@ -2421,7 +2416,7 @@ function App() {
             </button>
 
             <div className="about-logo">
-              ✦
+              K
             </div>
 
             <h2>
