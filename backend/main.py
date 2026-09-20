@@ -1,6 +1,7 @@
 import os
 import secrets
 import sqlite3
+import json
 
 import requests
 
@@ -86,15 +87,15 @@ create_database()
 
 
 # =========================================================
-# OLLAMA
+# GEMINI
 # =========================================================
 
-OLLAMA_URL = os.getenv(
-    "OLLAMA_URL",
-    "http://127.0.0.1:11434/api/chat"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{GEMINI_MODEL}:generateContent"
 )
-
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
 
 # =========================================================
@@ -727,15 +728,16 @@ when it is not present in the provided context.
 """
 
     # -----------------------------------------------------
-    # OLLAMA MESSAGES
+    if not GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="AI service is not configured. Add GEMINI_API_KEY to the backend environment."
+        )
+
+    # GEMINI MESSAGES
     # -----------------------------------------------------
 
-    ollama_messages = [
-        {
-            "role": "system",
-            "content": system_prompt
-        }
-    ]
+    gemini_contents = []
 
     for msg in messages:
 
@@ -756,78 +758,81 @@ when it is not present in the provided context.
 
             continue
 
-        ollama_messages.append(
+        gemini_contents.append(
             {
-                "role": role,
-                "content": content
+                "role": "model" if role == "assistant" else "user",
+                "parts": [
+                    {
+                        "text": content
+                    }
+                ]
             }
         )
 
     # -----------------------------------------------------
-    # OLLAMA REQUEST
+    # GEMINI REQUEST
     # -----------------------------------------------------
 
     payload = {
-        "model": OLLAMA_MODEL,
-        "messages": ollama_messages,
-        "stream": True
+        "systemInstruction": {
+            "parts": [
+                {
+                    "text": system_prompt
+                }
+            ]
+        },
+        "contents": gemini_contents,
+        "generationConfig": {
+            "temperature": 0.7
+        }
     }
 
-    def generate():
+    try:
+        response = requests.post(
+            GEMINI_URL,
+            params={
+                "key": GEMINI_API_KEY
+            },
+            json=payload,
+            timeout=300
+        )
+        response.raise_for_status()
+        data = response.json()
+        candidates = data.get("candidates", [])
+        text = (
+            candidates[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+            if candidates
+            else ""
+        )
 
+        if not text:
+            raise HTTPException(
+                status_code=502,
+                detail="The AI provider returned an empty response."
+            )
+    except HTTPException:
+        raise
+    except requests.RequestException as error:
+        print("GEMINI ERROR:", error)
+        detail = "Could not connect to the AI provider."
         try:
-
-            response = requests.post(
-                OLLAMA_URL,
-                json=payload,
-                stream=True,
-                timeout=300
-            )
-
-            response.raise_for_status()
-
-            for line in response.iter_lines():
-
-                if not line:
-                    continue
-
-                try:
-
-                    import json
-
-                    data = json.loads(
-                        line.decode("utf-8")
-                    )
-
-                    chunk = data.get(
-                        "message",
-                        {}
-                    ).get(
-                        "content",
-                        ""
-                    )
-
-                    if chunk:
-
-                        yield chunk
-
-                except Exception:
-
-                    continue
-
-        except Exception as error:
-
-            print(
-                "OLLAMA ERROR:",
-                error
-            )
-
-            yield (
-                "\n\nSorry, I couldn't connect "
-                "to the AI model."
-            )
+            provider_error = response.json().get("error", {}).get("message")
+            if provider_error:
+                detail = provider_error
+        except (NameError, ValueError, AttributeError):
+            pass
+        raise HTTPException(status_code=502, detail=detail) from error
+    except (KeyError, IndexError, TypeError, ValueError) as error:
+        print("GEMINI RESPONSE ERROR:", error)
+        raise HTTPException(
+            status_code=502,
+            detail="The AI provider returned an invalid response."
+        ) from error
 
     return StreamingResponse(
-        generate(),
+        iter([text]),
         media_type="text/plain"
     )
