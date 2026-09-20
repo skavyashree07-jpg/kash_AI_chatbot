@@ -91,7 +91,7 @@ create_database()
 # =========================================================
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     f"{GEMINI_MODEL}:generateContent"
@@ -822,7 +822,7 @@ when it is not present in the provided context.
             provider_error = response.json().get("error", {}).get("message")
             if provider_error:
                 detail = provider_error
-        except (NameError, ValueError, AttributeError):
+        except (NameError, ValueError, AttributeError, requests.JSONDecodeError):
             pass
         raise HTTPException(status_code=502, detail=detail) from error
     except (KeyError, IndexError, TypeError, ValueError) as error:
