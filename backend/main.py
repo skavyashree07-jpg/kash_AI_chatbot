@@ -91,11 +91,39 @@ create_database()
 # =========================================================
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-GEMINI_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL}:generateContent"
-)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "").strip()
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+
+def get_gemini_model():
+    if GEMINI_MODEL:
+        return GEMINI_MODEL
+
+    response = requests.get(
+        f"{GEMINI_API_BASE}/models",
+        params={"key": GEMINI_API_KEY},
+        timeout=30
+    )
+    response.raise_for_status()
+
+    supported_models = {
+        model.get("name", "").removeprefix("models/")
+        for model in response.json().get("models", [])
+        if "generateContent" in model.get("supportedGenerationMethods", [])
+    }
+
+    for model_name in [
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+    ]:
+        if model_name in supported_models:
+            return model_name
+
+    raise RuntimeError(
+        "Gemini API key has no model that supports generateContent."
+    )
 
 
 # =========================================================
@@ -599,6 +627,8 @@ async def upload_pdf(
     # READ PDF
     # -----------------------------------------------------
 
+    response = None
+
     try:
 
         file_bytes = await file.read()
@@ -788,8 +818,13 @@ when it is not present in the provided context.
     }
 
     try:
+        model_name = get_gemini_model()
+        gemini_url = (
+            f"{GEMINI_API_BASE}/models/"
+            f"{model_name}:generateContent"
+        )
         response = requests.post(
-            GEMINI_URL,
+            gemini_url,
             params={
                 "key": GEMINI_API_KEY
             },
@@ -816,7 +851,11 @@ when it is not present in the provided context.
     except HTTPException:
         raise
     except requests.RequestException as error:
-        print("GEMINI ERROR:", error)
+        print(
+            "GEMINI ERROR:",
+            error,
+            getattr(response, "text", "")
+        )
         detail = "Could not connect to the AI provider."
         try:
             provider_error = response.json().get("error", {}).get("message")
@@ -825,6 +864,9 @@ when it is not present in the provided context.
         except (NameError, ValueError, AttributeError, requests.JSONDecodeError):
             pass
         raise HTTPException(status_code=502, detail=detail) from error
+    except RuntimeError as error:
+        print("GEMINI MODEL ERROR:", error)
+        raise HTTPException(status_code=502, detail=str(error)) from error
     except (KeyError, IndexError, TypeError, ValueError) as error:
         print("GEMINI RESPONSE ERROR:", error)
         raise HTTPException(
